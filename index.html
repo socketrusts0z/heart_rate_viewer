@@ -25,6 +25,7 @@
       <div class="meta">
         <span id="updated">Last updated: -</span>
         <span id="points">Points: 0</span>
+        <span id="lastData">Last data timestamp: -</span>
       </div>
       <div class="row">
         <button id="refresh">Refresh</button>
@@ -42,6 +43,7 @@
     const statusEl = document.getElementById('status');
     const updatedEl = document.getElementById('updated');
     const pointsEl = document.getElementById('points');
+    const lastDataEl = document.getElementById('lastData');
 
     let latestPoints = [];
 
@@ -118,6 +120,8 @@
 
         pointsEl.textContent = `Points: ${points.length}`;
         updatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
+        const latestTimestamp = points.length ? points[points.length - 1].bucket_time : null;
+        lastDataEl.textContent = `Last data timestamp: ${latestTimestamp ? new Date(latestTimestamp).toLocaleString() : '-'}`;
         statusEl.textContent = `OK (${points.length} points)`;
       } catch (e) {
         statusEl.textContent = `Error: ${e.message}`;
