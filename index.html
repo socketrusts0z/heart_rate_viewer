@@ -43,6 +43,8 @@
     const updatedEl = document.getElementById('updated');
     const pointsEl = document.getElementById('points');
 
+    let latestPoints = [];
+
     const ctx = document.getElementById('chart');
     const chart = new Chart(ctx, {
       type: 'line',
@@ -62,12 +64,31 @@
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
         scales: {
           x: { ticks: { color: '#cbd5e1', maxTicksLimit: 12 }, grid: { color: '#374151' } },
           y: { ticks: { color: '#cbd5e1' }, grid: { color: '#374151' } },
         },
         plugins: {
           legend: { labels: { color: '#e5e7eb' } },
+          tooltip: {
+            callbacks: {
+              title(items) {
+                if (!items.length) return '';
+                const index = items[0].dataIndex;
+                const ts = latestPoints[index]?.bucket_time;
+                return ts ? new Date(ts).toLocaleString() : items[0].label;
+              },
+              label(context) {
+                const bpm = Number(context.parsed.y);
+                if (Number.isFinite(bpm)) return `Heart Rate: ${bpm.toFixed(1)} BPM`;
+                return `Heart Rate: ${context.formattedValue} BPM`;
+              },
+            },
+          },
         },
       },
     });
@@ -90,6 +111,7 @@
         const json = await res.json();
         const points = Array.isArray(json.points) ? json.points : [];
 
+        latestPoints = points;
         chart.data.labels = points.map(p => fmt(p.bucket_time));
         chart.data.datasets[0].data = points.map(p => Number(p.avg_bpm));
         chart.update();
