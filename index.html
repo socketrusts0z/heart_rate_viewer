@@ -155,18 +155,23 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
         const points = Array.isArray(json.points) ? json.points : [];
+        const cutoffMs = Date.now() - (2 * 24 * 60 * 60 * 1000);
+        const recentPoints = points.filter((p) => {
+          const ts = Date.parse(p.bucket_time);
+          return Number.isFinite(ts) && ts >= cutoffMs;
+        });
 
-        latestPoints = points;
+        latestPoints = recentPoints;
         latestPointPulseHealthy = true;
-        chart.data.labels = points.map(p => fmt(p.bucket_time));
-        chart.data.datasets[0].data = points.map(p => Number(p.avg_bpm));
+        chart.data.labels = recentPoints.map(p => fmt(p.bucket_time));
+        chart.data.datasets[0].data = recentPoints.map(p => Number(p.avg_bpm));
         chart.update();
 
-        pointsEl.textContent = `Points: ${points.length}`;
+        pointsEl.textContent = `Points: ${recentPoints.length}`;
         updatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
-        const latestTimestamp = points.length ? points[points.length - 1].bucket_time : null;
+        const latestTimestamp = recentPoints.length ? recentPoints[recentPoints.length - 1].bucket_time : null;
         lastDataEl.textContent = `Last data timestamp: ${latestTimestamp ? new Date(latestTimestamp).toLocaleString() : '-'}`;
-        statusEl.textContent = `OK (${points.length} points)`;
+        statusEl.textContent = `OK (${recentPoints.length} points, last 48 hours)`;
       } catch (e) {
         latestPointPulseHealthy = false;
         chart.update('none');
