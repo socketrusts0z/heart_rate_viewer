@@ -4,184 +4,62 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Heart Rate Dashboard</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif; margin: 0; padding: 16px; background: #0b1020; color: #e5e7eb; }
-    .wrap { max-width: 900px; margin: 0 auto; }
-    .card { background: #111827; border: 1px solid #374151; border-radius: 12px; padding: 14px; }
-    h1 { font-size: 20px; margin: 0 0 8px; }
-    .meta { color: #9ca3af; font-size: 13px; margin-bottom: 12px; display: flex; gap: 12px; flex-wrap: wrap; }
-    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-    button { border: 1px solid #4b5563; background: #1f2937; color: #f3f4f6; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
-    .status { font-size: 13px; color: #cbd5e1; margin-bottom: 8px; }
-    canvas { width: 100%; max-height: 420px; }
+    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; min-height: 100vh; background: #0b1020; color: #eef2ff; }
+    main { max-width: 920px; margin: 0 auto; padding: 28px 18px 48px; }
+    header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+    h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0 0 6px; }
+    .subtle, time, #status { color: #a5b4cf; font-size: .92rem; }
+    button { border: 1px solid #475569; border-radius: 8px; padding: 9px 13px; background: #18233a; color: inherit; font: inherit; cursor: pointer; }
+    button:hover { background: #243553; }
+    #status { min-height: 1.4em; margin-bottom: 14px; }
+    #readings { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+    .reading { background: #131d31; border: 1px solid #283955; border-radius: 14px; padding: 18px; }
+    .name { font-weight: 650; overflow-wrap: anywhere; }
+    .bpm { font-size: 2rem; font-weight: 750; letter-spacing: -.04em; margin: 12px 0 4px; color: #fda4af; }
+    .empty { grid-column: 1 / -1; text-align: center; padding: 34px; border: 1px dashed #475569; border-radius: 14px; color: #a5b4cf; }
+    footer { color: #8090ad; font-size: .8rem; margin-top: 28px; line-height: 1.5; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>Heart Rate (5 min)</h1>
-      <div class="meta">
-        <span id="updated">Last updated: -</span>
-        <span id="points">Points: 0</span>
-        <span id="lastData">Last data timestamp: -</span>
-      </div>
-      <div class="row">
-        <button id="refresh">Refresh</button>
-      </div>
-      <div id="status" class="status">Loading...</div>
-      <canvas id="chart"></canvas>
-    </div>
-  </div>
-
+  <main>
+    <header>
+      <div><h1>Heart Rate Dashboard</h1><div class="subtle">Latest shared readings</div></div>
+      <button id="refresh" type="button">Refresh</button>
+    </header>
+    <div id="status" role="status">Loading…</div>
+    <section id="readings" aria-live="polite"></section>
+    <footer>Readings are user-shared and may not be current. This dashboard is not medical advice.</footer>
+  </main>
   <script>
-    // TODO: set these
-    const READ_FN_URL = "https://gldfesycpjmppdnungpo.supabase.co/functions/v1/read-heart-rate";
-    const READ_TOKEN = "vacsyQ-sawzok-qyrsu9";
-
-    const statusEl = document.getElementById('status');
-    const updatedEl = document.getElementById('updated');
-    const pointsEl = document.getElementById('points');
-    const lastDataEl = document.getElementById('lastData');
-
-    let latestPoints = [];
-    let latestPointPulseHealthy = true;
-
-    const latestPointPulsePlugin = {
-      id: 'latestPointPulse',
-      afterDatasetsDraw(chartInstance) {
-        const meta = chartInstance.getDatasetMeta(0);
-        if (!meta || !meta.data || !meta.data.length) return;
-
-        const lastPoint = meta.data[meta.data.length - 1];
-        if (!lastPoint) return;
-
-        const { x, y } = lastPoint.getProps(['x', 'y'], true);
-        const t = (Date.now() % 1400) / 1400;
-        const radius = 6 + (t * 12);
-        const alpha = Math.max(0.0, 0.35 * (1 - t));
-
-        const ctx = chartInstance.ctx;
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = latestPointPulseHealthy
-          ? `rgba(34, 197, 94, ${alpha.toFixed(3)})`
-          : `rgba(239, 68, 68, ${alpha.toFixed(3)})`;
-        ctx.fill();
-        ctx.restore();
-      },
-    };
-
-    const ctx = document.getElementById('chart');
-    const chart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: [],
-        datasets: [{
-          label: 'BPM',
-          data: [],
-          borderColor: '#22c55e',
-          backgroundColor: 'rgba(34, 197, 94, 0.2)',
-          borderWidth: 2,
-          pointRadius(context) {
-            return context.dataIndex === latestPoints.length - 1 ? 4 : 0;
-          },
-          pointHoverRadius(context) {
-            return context.dataIndex === latestPoints.length - 1 ? 6 : 4;
-          },
-          pointBackgroundColor() {
-            return latestPointPulseHealthy ? '#22c55e' : '#ef4444';
-          },
-          tension: 0.2,
-          fill: true,
-        }],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        interaction: {
-          mode: 'index',
-          intersect: false,
-        },
-        scales: {
-          x: { ticks: { color: '#cbd5e1', maxTicksLimit: 12 }, grid: { color: '#374151' } },
-          y: { ticks: { color: '#cbd5e1' }, grid: { color: '#374151' } },
-        },
-        plugins: {
-          legend: { labels: { color: '#e5e7eb' } },
-          tooltip: {
-            callbacks: {
-              title(items) {
-                if (!items.length) return '';
-                const index = items[0].dataIndex;
-                const ts = latestPoints[index]?.bucket_time;
-                return ts ? new Date(ts).toLocaleString() : items[0].label;
-              },
-              label(context) {
-                const bpm = Number(context.parsed.y);
-                if (Number.isFinite(bpm)) return `Heart Rate: ${bpm.toFixed(1)} BPM`;
-                return `Heart Rate: ${context.formattedValue} BPM`;
-              },
-            },
-          },
-        },
-      },
-      plugins: [latestPointPulsePlugin],
-    });
-
-    // Redraw chart periodically so the latest-point pulse animates.
-    setInterval(() => {
-      if (latestPoints.length) chart.update('none');
-    }, 120);
-
-    function fmt(ts) {
-      const d = new Date(ts);
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-
-    async function loadData() {
-      if (READ_FN_URL.includes('YOUR-PROJECT-REF') || READ_TOKEN === 'YOUR_READ_TOKEN') {
-        statusEl.textContent = 'Set READ_FN_URL and READ_TOKEN in index.html first.';
-        latestPointPulseHealthy = false;
-        chart.update('none');
-        return;
+    // Supabase publishable keys are intentionally public. Row-level security protects private data.
+    const SUPABASE_URL = "https://kmhrcqposrxjeogadlht.supabase.co";
+    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_-yvM6oC9nyggjmelvZ851w_QnK_vk1h";
+    const endpoint = `${SUPABASE_URL}/rest/v1/rpc/latest_dashboard_readings`;
+    const readings = document.getElementById('readings');
+    const status = document.getElementById('status');
+    function relativeTime(value) { const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000)); if (seconds < 60) return 'just now'; if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`; if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`; return `${Math.floor(seconds / 86400)} days ago`; }
+    function render(data) {
+      readings.replaceChildren();
+      if (!data.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No shared heart-rate readings yet.'; readings.append(empty); return; }
+      for (const reading of data) {
+        const card = document.createElement('article'); card.className = 'reading';
+        const name = document.createElement('div'); name.className = 'name'; name.textContent = reading.username;
+        const bpm = document.createElement('div'); bpm.className = 'bpm'; bpm.textContent = `${Math.round(Number(reading.bpm))} BPM`;
+        const time = document.createElement('time'); time.dateTime = reading.measured_at; time.textContent = `${relativeTime(reading.measured_at)} · ${new Date(reading.measured_at).toLocaleString()}`;
+        card.append(name, bpm, time); readings.append(card);
       }
+    }
+    async function load() {
+      status.textContent = 'Refreshing…';
       try {
-        statusEl.textContent = 'Refreshing...';
-        const url = `${READ_FN_URL}?token=${encodeURIComponent(READ_TOKEN)}&limit=5000`;
-        const res = await fetch(url, { method: 'GET' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        const points = Array.isArray(json.points) ? json.points : [];
-        const cutoffMs = Date.now() - (2 * 24 * 60 * 60 * 1000);
-        const recentPoints = points.filter((p) => {
-          const ts = Date.parse(p.bucket_time);
-          return Number.isFinite(ts) && ts >= cutoffMs;
-        });
-
-        latestPoints = recentPoints;
-        latestPointPulseHealthy = true;
-        chart.data.labels = recentPoints.map(p => fmt(p.bucket_time));
-        chart.data.datasets[0].data = recentPoints.map(p => Number(p.avg_bpm));
-        chart.update();
-
-        pointsEl.textContent = `Points: ${recentPoints.length}`;
-        updatedEl.textContent = `Last updated: ${new Date().toLocaleString()}`;
-        const latestTimestamp = recentPoints.length ? recentPoints[recentPoints.length - 1].bucket_time : null;
-        lastDataEl.textContent = `Last data timestamp: ${latestTimestamp ? new Date(latestTimestamp).toLocaleString() : '-'}`;
-        statusEl.textContent = `OK (${recentPoints.length} points, last 48 hours)`;
-      } catch (e) {
-        latestPointPulseHealthy = false;
-        chart.update('none');
-        statusEl.textContent = `Error: ${e.message}`;
-      }
+        const response = await fetch(endpoint, { method: 'POST', headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: '{}' });
+        if (!response.ok) throw new Error(`Dashboard request failed (${response.status})`);
+        const data = await response.json(); render(Array.isArray(data) ? data : []); status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
+      } catch (error) { readings.replaceChildren(); status.textContent = error.message; }
     }
-
-    document.getElementById('refresh').addEventListener('click', loadData);
-    loadData();
-    setInterval(loadData, 60 * 1000);
+    document.getElementById('refresh').addEventListener('click', load); load(); setInterval(load, 120000);
   </script>
 </body>
 </html>
