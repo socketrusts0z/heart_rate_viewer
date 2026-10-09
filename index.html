@@ -1,65 +1,31 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Heart Rate Dashboard</title>
-  <style>
-    :root { color-scheme: light dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; min-height: 100vh; background: #0b1020; color: #eef2ff; }
-    main { max-width: 920px; margin: 0 auto; padding: 28px 18px 48px; }
-    header { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
-    h1 { font-size: clamp(1.5rem, 4vw, 2rem); margin: 0 0 6px; }
-    .subtle, time, #status { color: #a5b4cf; font-size: .92rem; }
-    button { border: 1px solid #475569; border-radius: 8px; padding: 9px 13px; background: #18233a; color: inherit; font: inherit; cursor: pointer; }
-    button:hover { background: #243553; }
-    #status { min-height: 1.4em; margin-bottom: 14px; }
-    #readings { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-    .reading { background: #131d31; border: 1px solid #283955; border-radius: 14px; padding: 18px; }
-    .name { font-weight: 650; overflow-wrap: anywhere; }
-    .bpm { font-size: 2rem; font-weight: 750; letter-spacing: -.04em; margin: 12px 0 4px; color: #fda4af; }
-    .empty { grid-column: 1 / -1; text-align: center; padding: 34px; border: 1px dashed #475569; border-radius: 14px; color: #a5b4cf; }
-    footer { color: #8090ad; font-size: .8rem; margin-top: 28px; line-height: 1.5; }
-  </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f5f0">
+  <title>Heart Rate Share · Community</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="dashboard.js" defer></script>
 </head>
 <body>
+  <header class="topbar"><a class="brand" href="./"><span class="brand-mark" aria-hidden="true">♥</span> Heart Rate Share</a><span class="top-label">COMMUNITY DASHBOARD</span></header>
   <main>
-    <header>
-      <div><h1>Heart Rate Dashboard</h1><div class="subtle">Latest shared readings</div></div>
-      <button id="refresh" type="button">Refresh</button>
-    </header>
-    <div id="status" role="status">Loading…</div>
-    <section id="readings" aria-live="polite"></section>
-    <footer>Readings are user-shared and may not be current. This dashboard is not medical advice.</footer>
+    <section class="hero" aria-labelledby="title">
+      <div><p class="eyebrow">A LITTLE CONNECTION, ONE BEAT AT A TIME</p><h1 id="title">Everyone’s<br><em>latest beat.</em></h1><p class="intro">A shared snapshot from Apple Watch.<br>Find your people and see when they last checked in.</p></div>
+      <div class="hero-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><span class="hero-heart">♥</span><span class="art-caption">CONNECTED BY HEART</span></div>
+    </section>
+    <section class="stats" aria-label="Reading overview">
+      <div><span class="stat-label">People sharing</span><strong id="total">—</strong></div>
+      <div><span class="stat-label"><span class="dot"></span>Measured within 2 hours</span><strong id="recent">—</strong></div>
+      <div><span class="stat-label">Older readings</span><strong id="stale">—</strong></div>
+    </section>
+    <section class="community" aria-labelledby="community-title">
+      <div class="section-head"><div><h2 id="community-title">The community <span id="count"></span></h2><p id="status" role="status">Loading readings…</p></div><button id="refresh" type="button"><span aria-hidden="true">↻</span> Refresh</button></div>
+      <label class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Find a username" aria-label="Search usernames" autocomplete="off"></label>
+      <div id="readings" class="grid" aria-live="polite" aria-label="Latest heart-rate readings"><div class="empty">Loading the latest shared readings…</div></div>
+    </section>
+    <footer><span>Made for staying connected.</span><span>Latest measurements, not live monitoring. “Stale” means older than 2 hours.</span></footer>
   </main>
-  <script>
-    // Supabase publishable keys are intentionally public. Row-level security protects private data.
-    const SUPABASE_URL = "https://kmhrcqposrxjeogadlht.supabase.co";
-    const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_-yvM6oC9nyggjmelvZ851w_QnK_vk1h";
-    const endpoint = `${SUPABASE_URL}/rest/v1/rpc/latest_dashboard_readings`;
-    const readings = document.getElementById('readings');
-    const status = document.getElementById('status');
-    function relativeTime(value) { const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000)); if (seconds < 60) return 'just now'; if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`; if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`; return `${Math.floor(seconds / 86400)} days ago`; }
-    function render(data) {
-      readings.replaceChildren();
-      if (!data.length) { const empty = document.createElement('div'); empty.className = 'empty'; empty.textContent = 'No shared heart-rate readings yet.'; readings.append(empty); return; }
-      for (const reading of data) {
-        const card = document.createElement('article'); card.className = 'reading';
-        const name = document.createElement('div'); name.className = 'name'; name.textContent = reading.username;
-        const bpm = document.createElement('div'); bpm.className = 'bpm'; bpm.textContent = `${Math.round(Number(reading.bpm))} BPM`;
-        const time = document.createElement('time'); time.dateTime = reading.measured_at; time.textContent = `${relativeTime(reading.measured_at)} · ${new Date(reading.measured_at).toLocaleString()}`;
-        card.append(name, bpm, time); readings.append(card);
-      }
-    }
-    async function load() {
-      status.textContent = 'Refreshing…';
-      try {
-        const response = await fetch(endpoint, { method: 'POST', headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' }, body: '{}' });
-        if (!response.ok) throw new Error(`Dashboard request failed (${response.status})`);
-        const data = await response.json(); render(Array.isArray(data) ? data : []); status.textContent = `Updated ${new Date().toLocaleTimeString()}`;
-      } catch (error) { readings.replaceChildren(); status.textContent = error.message; }
-    }
-    document.getElementById('refresh').addEventListener('click', load); load(); setInterval(load, 120000);
-  </script>
 </body>
 </html>
